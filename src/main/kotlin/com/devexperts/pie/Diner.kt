@@ -13,22 +13,28 @@ import akka.japi.pf.ReceiveBuilder
 fun main(args: Array<String>) {
 
     data class GetSlice(val customer: ActorRef)
-    data class AddToOrder(val customer: ActorRef)
+    data class AddToOrder(val customer: ActorRef, val pie: String)
+    data class PutOnTable(val pie: String)
+    data class NoPieLeft(val customer: ActorRef)
 
     class CustomerActor(val waiter: ActorRef) : AbstractLoggingActor() {
 
         override fun createReceive() =
                 ReceiveBuilder()
                         .match(String::class.java, this::onMessage)
+                        .match(PutOnTable::class.java, this::receivePie)
                         .build()
 
         private fun onMessage(message: String) {
             when (message) {
                 "hungry for pie" -> waiter.tell("order", self())
-                "put on table" -> log().info("tasty pie")
                 "no pie left" -> log().info("sad story")
                 else -> log().error("Unknown message: $message")
             }
+        }
+
+        private fun receivePie(pieMessage: PutOnTable) {
+            log().info("tasty ${pieMessage.pie} pie")
         }
     }
 
@@ -38,6 +44,7 @@ fun main(args: Array<String>) {
                 ReceiveBuilder()
                         .match(String::class.java, this::onMessage)
                         .match(AddToOrder::class.java, this::addToOrder)
+                        .match(NoPieLeft::class.java, this::noPieLeft)
                         .build()
 
         private fun onMessage(message: String) {
@@ -48,7 +55,11 @@ fun main(args: Array<String>) {
         }
 
         private fun addToOrder(addToOrder: AddToOrder) {
-            addToOrder.customer.tell("put on table", self)
+            addToOrder.customer.tell(PutOnTable(addToOrder.pie), self)
+        }
+
+        private fun noPieLeft(noPie: NoPieLeft) {
+            noPie.customer.tell("no pie left", self)
         }
     }
 
@@ -62,11 +73,11 @@ fun main(args: Array<String>) {
         private fun onGetSlice(getSlice: GetSlice) {
             if (slices.size <= 0) {
                         log().error("no pie left")
-                        getSender().tell("error", self)
+                        getSender().tell(NoPieLeft(getSlice.customer), self)
                     } else {
                         val slice = slices.removeFirst()
                         log().info("Slice: $slice")
-                        getSender().tell(AddToOrder(getSlice.customer), self)
+                        getSender().tell(AddToOrder(getSlice.customer, slice), self)
                     }
         }
     }
